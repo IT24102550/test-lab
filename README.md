@@ -23,6 +23,7 @@ make -f Makefile_550
 - LISTPROC (process list)
 - EXEC (whitelisted: DATE, UPTIME, DISKFREE, HOSTNAME, WHOAMI)
 - PUT/GET (file transfer)
+- LIST (list stored files with count, names, and sizes in personalised path)
 - Multiple clients (threads)
 - UDP monitoring (MONITOR START/STOP)
 - Logging

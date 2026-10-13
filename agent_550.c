@@ -10,10 +10,12 @@
 #include <pthread.h>
 #include <time.h>
 #include <stdarg.h>
+#include <dirent.h>
 
 #define PORT 9410
 #define SID "552"
 #define AUTH_TOKEN "OPS-2550"
+#define STORAGE_PATH "./agentfiles/IT24102550"
 #define BUFFER_SIZE 4096
 
 // ============================================
@@ -258,11 +260,11 @@ void handle_client(int client_fd) {
             sscanf(buffer + 4, "%255s %ld", filename, &filesize);
 
             mkdir("./agentfiles", 0755);
-            mkdir("./agentfiles/IT24102550", 0755);
+            mkdir(STORAGE_PATH, 0755);
 
             char filepath[512];
             snprintf(filepath, sizeof(filepath),
-                     "./agentfiles/IT24102550/%s", filename);
+                     "%s/%s", STORAGE_PATH, filename);
 
             FILE *fp = fopen(filepath, "wb");
             if (fp == NULL) {
@@ -298,7 +300,7 @@ void handle_client(int client_fd) {
 
             char filepath[512];
             snprintf(filepath, sizeof(filepath),
-                     "./agentfiles/IT24102550/%s", filename);
+                     "%s/%s", STORAGE_PATH, filename);
 
             FILE *fp = fopen(filepath, "rb");
             if (fp == NULL) {
@@ -326,6 +328,65 @@ void handle_client(int client_fd) {
 
             printf("[Agent] GET: %s (%ld bytes)\n", filename, sent);
             log_event("GET: %s (%ld bytes) to fd=%d", filename, sent, client_fd);
+            continue;
+        }
+
+        // LIST
+        if (strcmp(buffer, "LIST") == 0) {
+            DIR *dir = opendir(STORAGE_PATH);
+            if (dir == NULL) {
+                send_response(client_fd, "OK FILES 0 NONE");
+                printf("[Agent] LIST: 0 files (folder missing)\n");
+                log_event("LIST: 0 files (NONE) from fd=%d", client_fd);
+                continue;
+            }
+
+            struct dirent *entry;
+            char file_list[BUFFER_SIZE];
+            file_list[0] = '\0';
+            int count = 0;
+
+            while ((entry = readdir(dir)) != NULL) {
+                // Skip . and ..
+                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                    continue;
+                }
+
+                char fullpath[1024];
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", STORAGE_PATH, entry->d_name);
+
+                struct stat st;
+                if (stat(fullpath, &st) == -1) {
+                    continue;
+                }
+
+                // Skip any sub-folders (only include regular files)
+                if (!S_ISREG(st.st_mode)) {
+                    continue;
+                }
+
+                char item[512];
+                snprintf(item, sizeof(item), "%s:%ld", entry->d_name, (long)st.st_size);
+
+                if (count > 0) {
+                    strncat(file_list, ",", sizeof(file_list) - strlen(file_list) - 1);
+                }
+                strncat(file_list, item, sizeof(file_list) - strlen(file_list) - 1);
+                count++;
+            }
+            closedir(dir);
+
+            if (count == 0) {
+                send_response(client_fd, "OK FILES 0 NONE");
+                printf("[Agent] LIST: 0 files (empty)\n");
+                log_event("LIST: 0 files (NONE) from fd=%d", client_fd);
+            } else {
+                char response[BUFFER_SIZE];
+                snprintf(response, sizeof(response), "OK FILES %d %s", count, file_list);
+                send_response(client_fd, response);
+                printf("[Agent] LIST sent: %d files (%s)\n", count, file_list);
+                log_event("LIST: %d files (%s) from fd=%d", count, file_list, client_fd);
+            }
             continue;
         }
 

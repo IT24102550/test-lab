@@ -117,7 +117,19 @@ int main() {
     read(sock, buffer, BUFFER_SIZE - 1);
     printf("[Controller] Received: %s", buffer);
 
-    // PUT
+    // ============================================
+    // Test (1): LIST when empty
+    // ============================================
+    send(sock, "LIST\n", 5, 0);
+    printf("[Controller] Sent: LIST\n");
+    memset(buffer, 0, BUFFER_SIZE);
+    read(sock, buffer, BUFFER_SIZE - 1);
+    printf("[Controller] Received: %s", buffer);
+
+    // ============================================
+    // Test (2): Two PUTs then LIST with right sizes
+    // ============================================
+    // PUT 1: test_upload.txt
     FILE *test_fp = fopen("test_upload.txt", "wb");
     if (test_fp != NULL) {
         fprintf(test_fp, "Hello RemoteOps! This is a test file.\n");
@@ -147,6 +159,44 @@ int main() {
         read(sock, buffer, BUFFER_SIZE - 1);
         printf("[Controller] Received: %s", buffer);
     }
+
+    // PUT 2: sample_550.txt
+    FILE *test_fp2 = fopen("sample_550.txt", "wb");
+    if (test_fp2 != NULL) {
+        fprintf(test_fp2, "RemoteOps second sample file for LIST verification!\n");
+        fclose(test_fp2);
+    }
+
+    test_fp2 = fopen("sample_550.txt", "rb");
+    if (test_fp2 != NULL) {
+        fseek(test_fp2, 0, SEEK_END);
+        long file_size2 = ftell(test_fp2);
+        fseek(test_fp2, 0, SEEK_SET);
+
+        char put_cmd2[256];
+        snprintf(put_cmd2, sizeof(put_cmd2), "PUT sample_550.txt %ld\n", file_size2);
+        send(sock, put_cmd2, strlen(put_cmd2), 0);
+        printf("[Controller] Sent: %s", put_cmd2);
+
+        char filebuf[4096];
+        int n;
+        while ((n = fread(filebuf, 1, sizeof(filebuf), test_fp2)) > 0) {
+            send(sock, filebuf, n, 0);
+        }
+        fclose(test_fp2);
+        printf("[Controller] Sent file bytes\n");
+
+        memset(buffer, 0, BUFFER_SIZE);
+        read(sock, buffer, BUFFER_SIZE - 1);
+        printf("[Controller] Received: %s", buffer);
+    }
+
+    // LIST after two PUTs
+    send(sock, "LIST\n", 5, 0);
+    printf("[Controller] Sent: LIST\n");
+    memset(buffer, 0, BUFFER_SIZE);
+    read(sock, buffer, BUFFER_SIZE - 1);
+    printf("[Controller] Received: %s", buffer);
 
     // GET
     send(sock, "GET test_upload.txt\n", 20, 0);

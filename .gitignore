@@ -5,6 +5,7 @@ controller_550
 # Test files
 test_upload.txt
 test_downloaded.txt
+sample_550.txt
 
 # Editor files
 *.swp
