@@ -16,6 +16,7 @@
 #define SID "552"
 #define AUTH_TOKEN "OPS-2550"
 #define STORAGE_PATH "./agentfiles/IT24102550"
+#define MAX_AUTH_ATTEMPTS 3
 #define BUFFER_SIZE 4096
 
 // ============================================
@@ -112,6 +113,7 @@ void *client_thread(void *arg) {
 void handle_client(int client_fd) {
     char buffer[BUFFER_SIZE];
     int authenticated = 0;
+    int failed_auth = 0;
 
     printf("[Agent] New client connected\n");
     log_event("CONNECTION: New client connected (fd=%d)", client_fd);
@@ -131,20 +133,25 @@ void handle_client(int client_fd) {
 
         // Authentication
         if (!authenticated) {
-            if (strncmp(buffer, "AUTH ", 5) == 0) {
-                char *token = buffer + 5;
-                if (strcmp(token, AUTH_TOKEN) == 0) {
-                    authenticated = 1;
-                    send_response(client_fd, "OK AUTHENTICATED");
-                    printf("[Agent] Authentication successful\n");
-                    log_event("AUTH: Successful for client (fd=%d)", client_fd);
+            if (strncmp(buffer, "AUTH ", 5) == 0 && strcmp(buffer + 5, AUTH_TOKEN) == 0) {
+                authenticated = 1;
+                failed_auth = 0;
+                send_response(client_fd, "OK AUTHENTICATED");
+                printf("[Agent] Authentication successful\n");
+                log_event("AUTH: Successful for client (fd=%d)", client_fd);
+            } else {
+                failed_auth++;
+                if (failed_auth >= MAX_AUTH_ATTEMPTS) {
+                    send_response(client_fd, "ERR 006 TOO_MANY_ATTEMPTS");
+                    printf("[Agent] WARNING: Too many failed AUTH attempts for client (fd=%d), closing connection\n", client_fd);
+                    log_event("WARNING: Client (fd=%d) exceeded max failed AUTH attempts (%d), connection closed",
+                              client_fd, MAX_AUTH_ATTEMPTS);
+                    break;
                 } else {
                     send_response(client_fd, "ERR 001 AUTH_FAILED");
-                    printf("[Agent] Authentication failed\n");
-                    log_event("AUTH: FAILED for client (fd=%d)", client_fd);
+                    printf("[Agent] Authentication failed (attempt %d/%d)\n", failed_auth, MAX_AUTH_ATTEMPTS);
+                    log_event("AUTH: FAILED for client (fd=%d) (attempt %d/%d)", client_fd, failed_auth, MAX_AUTH_ATTEMPTS);
                 }
-            } else {
-                send_response(client_fd, "ERR 001 AUTH_FAILED");
             }
             continue;
         }

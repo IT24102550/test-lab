@@ -56,31 +56,71 @@ int main() {
     struct sockaddr_in serv_addr;
     char buffer[BUFFER_SIZE];
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        perror("socket failed");
-        exit(1);
-    }
-
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(PORT);
     inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr);
 
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("connect failed");
+    // ============================================
+    // Test: Lockout & Concurrent Connections
+    // ============================================
+    printf("============================================================\n");
+    printf("[Test] Testing AUTH Lockout & Concurrent Client Access\n");
+    printf("============================================================\n");
+
+    int sock1 = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock1 < 0 || connect(sock1, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("sock1 connect failed");
         exit(1);
     }
-    printf("[Controller] Connected to Agent on port %d\n", PORT);
+    printf("[Client 1] Connected to Agent on port %d\n", PORT);
 
-    // AUTH
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0 || connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("sock2 connect failed");
+        exit(1);
+    }
+    printf("[Client 2 (Controller)] Connected to Agent concurrently on port %d\n", PORT);
+
+    // Client 1 - Attempt 1 (Failure)
+    send(sock1, "AUTH BAD_TOKEN_1\n", 17, 0);
+    printf("[Client 1] Sent: AUTH BAD_TOKEN_1\n");
+    memset(buffer, 0, BUFFER_SIZE);
+    read(sock1, buffer, BUFFER_SIZE - 1);
+    printf("[Client 1] Received: %s", buffer);
+
+    // Client 2 - Legitimate login at the same time (Requirement 3)
     char auth_cmd[100];
     snprintf(auth_cmd, sizeof(auth_cmd), "AUTH %s\n", AUTH_TOKEN);
     send(sock, auth_cmd, strlen(auth_cmd), 0);
-    printf("[Controller] Sent: %s", auth_cmd);
-
+    printf("[Client 2] Sent: %s", auth_cmd);
     memset(buffer, 0, BUFFER_SIZE);
     read(sock, buffer, BUFFER_SIZE - 1);
-    printf("[Controller] Received: %s", buffer);
+    printf("[Client 2] Received: %s", buffer);
+
+    // Client 1 - Attempt 2 (Failure)
+    send(sock1, "AUTH BAD_TOKEN_2\n", 17, 0);
+    printf("[Client 1] Sent: AUTH BAD_TOKEN_2\n");
+    memset(buffer, 0, BUFFER_SIZE);
+    read(sock1, buffer, BUFFER_SIZE - 1);
+    printf("[Client 1] Received: %s", buffer);
+
+    // Client 1 - Attempt 3 (Reaches limit - Requirement 2)
+    send(sock1, "AUTH BAD_TOKEN_3\n", 17, 0);
+    printf("[Client 1] Sent: AUTH BAD_TOKEN_3\n");
+    memset(buffer, 0, BUFFER_SIZE);
+    read(sock1, buffer, BUFFER_SIZE - 1);
+    printf("[Client 1] Received: %s", buffer);
+
+    // Verify Client 1 connection is closed by agent
+    int r = read(sock1, buffer, BUFFER_SIZE - 1);
+    if (r <= 0) {
+        printf("[Client 1] Verified: Connection CLOSED by Agent after reaching limit! (Requirement 2)\n");
+    }
+    close(sock1);
+
+    printf("============================================================\n");
+    printf("[Client 2] Proceeding with normal operations (Requirement 3)\n");
+    printf("============================================================\n");
 
     // SYSINFO
     send(sock, "SYSINFO\n", 8, 0);

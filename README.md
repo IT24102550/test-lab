@@ -24,6 +24,7 @@ make -f Makefile_550
 - EXEC (whitelisted: DATE, UPTIME, DISKFREE, HOSTNAME, WHOAMI)
 - PUT/GET (file transfer)
 - LIST (list stored files with count, names, and sizes in personalised path)
+- Failed AUTH lockout (limit 3 attempts per connection, ERR 006 TOO_MANY_ATTEMPTS, WARNING log)
 - Multiple clients (threads)
 - UDP monitoring (MONITOR START/STOP)
 - Logging
